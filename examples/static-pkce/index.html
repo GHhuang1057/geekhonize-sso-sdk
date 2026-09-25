@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GeekHonize SSO · 纯前端登录示例（PKCE）</title>
+<!--
+  这是一个「无后端」的完整登录闭环示例：
+    1. 点「用 GeekHonize 登录」→ 跳转 SSO 授权页
+    2. 回跳本页带 ?code=&state= → SDK 自动用 code_verifier 换令牌
+    3. 调 /me 复核身份并展示
+
+  跑起来（回调白名单必须含 http://localhost:5500/cb 或本页面地址）：
+    cd geekhonize-sso-sdk
+    npx serve examples/static-pkce -l 5500
+  然后在开发者平台建一个「仅前端」应用，把这里的 CLIENT_ID 填进去。
+-->
+<script src="../../dist/gh-sso.min.js"></script>
+<style>
+  body { font: 15px/1.6 system-ui, sans-serif; margin: 0; padding: 40px; background: #fafafa; color: #1c1c1c; }
+  .card { max-width: 520px; margin: 0 auto; padding: 28px; background: #fff; border: 1px solid #e2e2e2; border-radius: 10px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.hint { color: #666; font-size: 13px; margin: 0 0 20px; }
+  button { font: inherit; padding: 10px 18px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+  button.secondary { background: #e5e7eb; color: #1c1c1c; margin-left: 8px; }
+  pre { background: #0b1021; color: #d7e0ff; padding: 14px; border-radius: 8px; overflow: auto; font-size: 12px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  label { font-size: 13px; color: #444; }
+  input { font: inherit; padding: 8px 10px; border: 1px solid #cfcfcf; border-radius: 6px; width: 100%; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>GeekHonize 登录（纯前端 / PKCE）</h1>
+  <p class="hint">无后端、无 client_secret，令牌存在 sessionStorage。</p>
+
+  <div id="config" class="row" style="flex-direction:column; align-items:stretch; gap:10px;">
+    <label>SSO 地址（本地联调填 http://127.0.0.1:8787）
+      <input id="base" value="https://auth.geekhonize.top">
+    </label>
+    <label>Client ID（开发者平台建「仅前端」应用后获得，形如 gh_…）
+      <input id="cid" placeholder="gh_xxxxxxxxxxxxxxxx">
+    </label>
+  </div>
+
+  <div id="logged-out" class="row" style="margin-top:16px;">
+    <button id="login">用 GeekHonize 登录</button>
+  </div>
+
+  <div id="logged-in" style="display:none; margin-top:16px;">
+    <p id="who"></p>
+    <div class="row">
+      <button id="refresh" class="secondary">复核身份（/me）</button>
+      <button id="logout" class="secondary">退出</button>
+    </div>
+    <pre id="me" style="margin-top:14px; display:none;"></pre>
+  </div>
+</div>
+
+<script>
+  var $ = function (s) { return document.querySelector(s); };
+
+  function applyConfig() {
+    var base = $('#base').value.trim();
+    var cid = $('#cid').value.trim();
+    GHSSO.config({
+      clientId: cid,
+      ssoBase: base,
+      redirectUri: location.origin + location.pathname, // 回调回本页
+      storage: 'session',
+      autoCallback: false // 本页手动处理，便于展示流程
+    });
+    try { localStorage.setItem('gh_sso_demo_base', base); localStorage.setItem('gh_sso_demo_cid', cid); } catch (e) {}
+    return { cid: cid, base: base };
+  }
+
+  (function restore() {
+    try {
+      var b = localStorage.getItem('gh_sso_demo_base'); if (b) $('#base').value = b;
+      var c = localStorage.getItem('gh_sso_demo_cid'); if (c) $('#cid').value = c;
+    } catch (e) {}
+  })();
+
+  function showLoggedIn(user) {
+    $('#logged-out').style.display = 'none';
+    $('#config').style.display = 'none';
+    $('#logged-in').style.display = '';
+    $('#who').textContent = '已登录：' + ((user && (user.display_name || user.username)) || '未知用户');
+  }
+  function showLoggedOut() {
+    $('#logged-out').style.display = '';
+    $('#config').style.display = 'flex';
+    $('#logged-in').style.display = 'none';
+  }
+
+  // 页面加载：若带着 ?code=/?error= 就自动消化
+  (async function bootstrap() {
+    applyConfig();
+    if (GHSSO.hasPendingCallback()) {
+      var cid = $('#cid').value.trim();
+      if (!cid) { alert('回调已到达，但刷新后 Client ID 丢失，请重填后再走一次'); return; }
+      var r = await GHSSO.handleCallback();
+      if (r.ok) { showLoggedIn(r.user); }
+      else { alert('登录失败：' + (r.message || r.error)); showLoggedOut(); }
+      return;
+    }
+    if (GHSSO.isAuthenticated()) { try { showLoggedIn(GHSSO.getUser()); return; } catch (e) {} }
+    showLoggedOut();
+  })();
+
+  $('#login').addEventListener('click', async function () {
+    var c = applyConfig();
+    if (!c.cid) { alert('请先填写 Client ID'); return; }
+    this.disabled = true; this.textContent = '跳转中…';
+    try { await GHSSO.login(); }
+    catch (e) { alert(e.message); this.disabled = false; this.textContent = '用 GeekHonize 登录'; }
+  });
+
+  $('#refresh').addEventListener('click', async function () {
+    try {
+      var me = await GHSSO.me();
+      $('#me').style.display = '';
+      $('#me').textContent = JSON.stringify(me, null, 2);
+    } catch (e) { alert('复核失败：' + e.message); }
+  });
+
+  $('#logout').addEventListener('click', function () {
+    GHSSO.logout();
+    showLoggedOut();
+    $('#me').style.display = 'none';
+  });
+</script>
+</body>
+</html>

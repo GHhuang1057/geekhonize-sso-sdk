@@ -1,0 +1,62 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Build browser + server bundles
+        run: node build.mjs
+
+      - name: Verify build output
+        run: |
+          set -e
+          for f in dist/gh-sso.js dist/gh-sso.min.js dist/gh-sso.esm.js dist/gh-sso-server.mjs dist/version.json; do
+            test -s "$f" || { echo "缺少构建产物: $f"; exit 1; }
+          done
+          echo "构建产物齐全"
+
+      - name: Verify server exports load in Node
+        run: node -e "import('./dist/gh-sso-server.mjs').then(m=>{ if(!m.createSsoClient||!m.signPayload||!m.verifyPayload) throw new Error('server exports 不全'); console.log('server exports ok') })"
+
+      - name: Verify sync CLI
+        run: |
+          node bin/sync.mjs --out /tmp/sso-sdk-assets --versioned
+          test -s /tmp/sso-sdk-assets/gh-sso.min.js
+          ls -1 /tmp/sso-sdk-assets
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - run: node build.mjs
+      - name: Publish to npm
+        # 未配置 NPM_TOKEN 时自动跳过，避免推送 tag 就报错
+        if: env.NODE_AUTH_TOKEN != ''
+        run: npm publish --access public

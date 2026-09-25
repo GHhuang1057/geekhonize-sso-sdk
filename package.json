@@ -1,0 +1,48 @@
+{
+  "name": "@geekhonize/sso-sdk",
+  "version": "0.1.0",
+  "description": "GeekHonize SSO 接入 SDK —— 浏览器端（PKCE 公开客户端）与服务端（授权码机密客户端），零依赖",
+  "type": "module",
+  "license": "MIT",
+  "author": "GeekHonize",
+  "homepage": "https://platform.geekhonize.top/sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GHhuang1057/geekhonize-sso-sdk.git"
+  },
+  "keywords": [
+    "sso",
+    "oauth2",
+    "pkce",
+    "geekhonize",
+    "cloudflare-workers"
+  ],
+  "files": [
+    "dist/",
+    "src/",
+    "bin/",
+    "build.mjs",
+    "docs/",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "geekhonize-sso-sync": "bin/sync.mjs"
+  },
+  "exports": {
+    ".": "./dist/gh-sso.esm.js",
+    "./browser": "./dist/gh-sso.js",
+    "./browser/min": "./dist/gh-sso.min.js",
+    "./esm": "./dist/gh-sso.esm.js",
+    "./server": "./dist/gh-sso-server.mjs",
+    "./sync": "./bin/sync.mjs"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepublishOnly": "node build.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false
+}
