@@ -1,0 +1,34 @@
+name: publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'npm publish --dry-run（不真正发布）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: *** secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: node build.mjs
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry_run }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then echo "未配置 NPM_TOKEN secret，终止"; exit 1; fi
+          npm publish --access public
+      - name: Dry run
+        if: ${{ inputs.dry_run }}
+        run: npm publish --access public --dry-run
